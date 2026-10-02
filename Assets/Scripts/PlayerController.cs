@@ -16,10 +16,7 @@ public class PlayerController : NetworkBehaviour
 
     private bool IsGrounded()
     {
-        bool grounded = Physics.Raycast(transform.position, Vector3.down, groundCheckDistance);
-        Debug.Log("IsGrounded: " + grounded);
-
-        return grounded;
+        return Physics.Raycast(transform.position, Vector3.down, groundCheckDistance);
     }
 
     private void Awake()
