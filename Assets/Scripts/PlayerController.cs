@@ -5,14 +5,27 @@ using UnityEngine.InputSystem;
 public class PlayerController : NetworkBehaviour
 {
     public float speed = 5f;
+    public float jumpForce = 5f;
+    public float groundCheckDistance = 1f;
 
     private Vector2 inputVector;
+    private bool jumpPress;
 
     private Rigidbody rb;
+    private AudioSource audioSource;
+
+    private bool IsGrounded()
+    {
+        bool grounded = Physics.Raycast(transform.position, Vector3.down, groundCheckDistance);
+        Debug.Log("IsGrounded: " + grounded);
+
+        return grounded;
+    }
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
+        audioSource = GetComponent<AudioSource>();
     }
 
     // Update is called once per frame
@@ -31,9 +44,19 @@ public class PlayerController : NetworkBehaviour
             if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) v += 1f;
         }
 
+        bool jump = false;
+
+        if (Keyboard.current != null)
+        {
+            if (Keyboard.current.spaceKey.wasPressedThisFrame)
+            {
+                jump = true;
+            }
+        }
+
         Vector2 input = new Vector2(h, v).normalized;
 
-        SubmitInputServerRpc(input);
+        SubmitInputServerRpc(input, jump);
     }
 
     private void FixedUpdate()
@@ -44,6 +67,17 @@ public class PlayerController : NetworkBehaviour
 
         Vector3 targetVelocity = moveDirection * speed;
         rb.linearVelocity = new Vector3(targetVelocity.x, rb.linearVelocity.y, targetVelocity.z);
+
+        if (jumpPress)
+        {
+            jumpPress = false;
+
+            if (IsGrounded())
+            {
+                rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+                PlayJumpSoundClientRpc();
+            }
+        }
     }
 
     public override void OnNetworkSpawn()
@@ -61,8 +95,15 @@ public class PlayerController : NetworkBehaviour
     }
 
     [ServerRpc]
-    private void SubmitInputServerRpc(Vector2 input)
+    private void SubmitInputServerRpc(Vector2 input, bool jump)
     {
         inputVector = input;
+        jumpPress = jump;
+    }
+
+    [ClientRpc]
+    private void PlayJumpSoundClientRpc()
+    {
+        audioSource.Play();
     }
 }
