@@ -188,6 +188,8 @@ MonoBehaviour:
   speed: 5
   jumpForce: 5
   groundCheckDistance: 1.1
+  projectilePrefab: {fileID: 8552225021666000147, guid: 5d6abd0690864d84082c1fffda943b92, type: 3}
+  projectileSpeed: 15
 --- !u!114 &8266952643566522594
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -259,7 +261,7 @@ Rigidbody:
   m_UseGravity: 1
   m_IsKinematic: 0
   m_Interpolate: 0
-  m_Constraints: 80
+  m_Constraints: 112
   m_CollisionDetection: 0
 --- !u!82 &255860492542090309
 AudioSource:

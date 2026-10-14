@@ -1,15 +1,32 @@
 using System.Globalization;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
+
 public class PlayerController : NetworkBehaviour
 {
     public float speed = 5f;
     public float jumpForce = 5f;
     public float groundCheckDistance = 1f;
 
+    public GameObject projectilePrefab;
+    public float projectileSpeed = 15f;
+
     private Vector2 inputVector;
     private bool jumpPress;
+
+    private readonly NetworkVariable<Color> playerColor = new NetworkVariable<Color>(
+        Color.white,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
+
+    private readonly NetworkVariable<FixedString32Bytes> playerName = new NetworkVariable<FixedString32Bytes>(
+        "",
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server
+    );
 
     private Rigidbody rb;
     private AudioSource audioSource;
@@ -45,9 +62,19 @@ public class PlayerController : NetworkBehaviour
 
         if (Keyboard.current != null)
         {
-            if (Keyboard.current.spaceKey.wasPressedThisFrame)
+            if (Keyboard.current.spaceKey.isPressed)
             {
                 jump = true;
+            }
+
+            if (Keyboard.current.cKey.wasPressedThisFrame)
+            {
+                ChangeColorServerRpc();
+            }
+
+            if (Keyboard.current.fKey.wasPressedThisFrame)
+            {
+                ShootProjectileServerRpc();
             }
         }
 
@@ -67,13 +94,13 @@ public class PlayerController : NetworkBehaviour
 
         if (jumpPress)
         {
-            jumpPress = false;
-
             if (IsGrounded())
             {
                 rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
                 PlayJumpSoundClientRpc();
             }
+
+            jumpPress = false;
         }
     }
 
@@ -81,14 +108,35 @@ public class PlayerController : NetworkBehaviour
     {
         base.OnNetworkSpawn();
 
+        playerColor.OnValueChanged += OnPlayerColorChanged;
+        playerName.OnValueChanged += OnPlayerNameChanged;
+
         if (IsServer)
         {
             rb.isKinematic = false;
+
+            playerName.Value = $"Jugador {OwnerClientId + 1}";
+            playerColor.Value = Random.ColorHSV();
         }
         else
         {
             rb.isKinematic = true;
         }
+    }
+
+    private void OnPlayerColorChanged(Color previousColor, Color newColor)
+    {
+        Renderer renderer = GetComponentInChildren<Renderer>();
+
+        if (renderer != null)
+        {
+            renderer.material.color = newColor;
+        }
+    }
+
+    private void OnPlayerNameChanged(FixedString32Bytes previousName, FixedString32Bytes newName)
+    {
+        Debug.Log($"El nombre del jugador ha cambiado a: {newName}");
     }
 
     [ServerRpc]
@@ -98,9 +146,68 @@ public class PlayerController : NetworkBehaviour
         jumpPress = jump;
     }
 
+    [ServerRpc]
+    private void ChangeColorServerRpc()
+    {
+        playerColor.Value = Random.ColorHSV();
+    }
+
+    public void SetRandomColorFromServer()
+    {
+        if (!IsServer) return;
+
+        playerColor.Value = Random.ColorHSV();
+    }
+    
+    [ServerRpc]
+    private void ShootProjectileServerRpc()
+    {
+        if (projectilePrefab == null)
+        {
+            Debug.LogWarning("No se ha asignado el prefab del proyectil.");
+            return;
+        }
+
+        Vector3 direction = transform.forward;
+
+        Vector3 spawnPosition =
+            transform.position
+            + direction * 1.2f
+            + Vector3.up * 0.5f;
+
+        Quaternion spawnRotation = Quaternion.LookRotation(direction, Vector3.up);
+
+        GameObject projectile = Instantiate(projectilePrefab, spawnPosition, spawnRotation);
+
+        NetworkObject networkObject = projectile.GetComponent<NetworkObject>();
+
+        Rigidbody projectileRb = projectile.GetComponent<Rigidbody>();
+
+        if (networkObject == null || projectileRb == null)
+        {
+            Debug.LogError("El prefab necesita NetworkObject y Rigidbody.");
+
+            Destroy(projectile);
+            return;
+        }
+
+        // El servidor crea el proyectil y lo replica a los clientes.
+        networkObject.SpawnWithOwnership(OwnerClientId);
+
+        projectileRb.linearVelocity = direction * projectileSpeed;
+    }
+
     [ClientRpc]
     private void PlayJumpSoundClientRpc()
     {
         audioSource.Play();
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        playerColor.OnValueChanged -= OnPlayerColorChanged;
+        playerName.OnValueChanged -= OnPlayerNameChanged;
+
+        base.OnNetworkDespawn();
     }
 }
